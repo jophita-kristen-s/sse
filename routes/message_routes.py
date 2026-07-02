@@ -6,7 +6,7 @@ from services.sse_service import (
 from services.message_service import process_message
 
 from models.message import Message
-
+import queue
 import json
 
 message_bp = Blueprint(
@@ -22,18 +22,18 @@ def stream(user_id):
     client_queue = add_client(user_id)
 
     def event_stream():
-
         try:
             while True:
+                try:
+                    message = client_queue.get(timeout=15)
 
-                message = client_queue.get()
+                    yield f"data: {json.dumps(message)}\n\n"
 
-                yield (
-                    f"data:{json.dumps(message)}\n\n"
-                )
+                except queue.Empty:
+                    # Send heartbeat every 15 seconds
+                    yield ": keepalive\n\n"
 
         except GeneratorExit:
-
             remove_client(user_id)
 
     return Response(
@@ -44,6 +44,7 @@ def stream(user_id):
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "*",
+            "X-Accel-Buffering": "no",
         }
     )
 
